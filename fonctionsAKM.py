@@ -23,7 +23,7 @@ class graph_AKM:
         self.matrice_distance = None
         self.lien = None
     
-    def create_link(self, effet_pat, effet_doc, beta_lien ):
+    def create_link(self, effet_pat, effet_doc, beta_lien, show=True):
 
         #1 matrice distance
 
@@ -40,25 +40,25 @@ class graph_AKM:
         self.lien = np.zeros((self.nombre_patient, self.nombre_docteur))
         for j in range(self.nombre_docteur):
             for i in range(self.nombre_patient):
-                lambda_ij = self.beta_lien*self.matrice_distance[i,j]-self.effet_pat[i]+self.effet_doc[j]
+                lambda_ij = -self.beta_lien*self.matrice_distance[i,j]-self.effet_pat[i]+self.effet_doc[j]
                 self.lien[i,j] = np.random.binomial(1,1-(1/(1+np.exp(lambda_ij))))
 
         #3 graph
-
-        plt.figure(figsize=(6, 6))
-        plt.scatter(self.position_docteur[0], self.position_docteur[1], color='blue', alpha=0.7, label="Docteur")
-        plt.scatter(self.position_patient[0], self.position_patient[1], color='red', alpha=0.7, label="Patient")
-        for i in range(self.nombre_patient):
-            for j in range(self.nombre_docteur):
-                if self.lien[i,j] == 1:
-                    plt.plot([self.position_docteur[0][j], self.position_patient[0][i]], [self.position_docteur[1][j], self.position_patient[1][i]], 'k-',alpha=0.5,color="green")
-        plt.title("Points aléatoires uniformes dans [0,1]²")
-        plt.xlabel("x")
-        plt.ylabel("y")
-        plt.grid(True)
-        plt.axis('square')
-        plt.legend()
-        plt.show()
+        if show: 
+            plt.figure(figsize=(6, 6))
+            plt.scatter(self.position_docteur[0], self.position_docteur[1], color='blue', alpha=0.7, label="Docteur")
+            plt.scatter(self.position_patient[0], self.position_patient[1], color='red', alpha=0.7, label="Patient")
+            for i in range(self.nombre_patient):
+                for j in range(self.nombre_docteur):
+                    if self.lien[i,j] == 1:
+                        plt.plot([self.position_docteur[0][j], self.position_patient[0][i]], [self.position_docteur[1][j], self.position_patient[1][i]], 'k-',alpha=0.5,color="green")
+            plt.title("Points aléatoires uniformes dans [0,1]²")
+            plt.xlabel("x")
+            plt.ylabel("y")
+            plt.grid(True)
+            plt.axis('square')
+            plt.legend()
+            plt.show()
     
     def show_links(self):
         plt.figure(figsize=(6, 6))
@@ -88,7 +88,7 @@ class graph_AKM:
         self.prix = np.zeros((self.nombre_patient,self.nombre_docteur))
         for j in range(self.nombre_docteur):
             for i in range(self.nombre_patient):
-                self.prix[i,j] = self.constente + self.alpha[i] + self.psi[j] + self.beta*self.matrice_distance[i,j]
+                self.prix[i,j] = self.constente + self.alpha[i] + self.psi[j] + self.beta*self.matrice_distance[i,j] +np.random.normal()
 
         #2 Create all matrixes
 
@@ -148,16 +148,17 @@ class graph_AKM:
         
         return(beta_chapeau, alpha_chapeau, psi_chapeau, prix_chapeau)
     
-    def show_perf(self, alpha, psi, constente, beta):
+    def show_perf(self, alpha, psi, constente, beta, show=True):
         beta_chapeau, alpha_chapeau, psi_chapeau, prix_chapeau = self.solve_model(alpha, psi, constente, beta)
 
         mse_prix = int(((self.prix-prix_chapeau)**2).sum())/(self.nombre_patient*self.nombre_docteur)
         mse_alpha = ((self.alpha-alpha_chapeau[:])**2).sum()/(self.nombre_patient)
         mse_psi = ((self.psi-psi_chapeau[:])**2).sum()/(self.nombre_docteur)
 
-        print(f"Le mse_prix vaut: {mse_prix}")
-        print(f"Le mse_alpha vaut: {mse_alpha}")
-        print(f"Le mse_psi vaut: {mse_psi}")
+        if show:
+            print(f"Le mse_prix vaut: {mse_prix}")
+            print(f"Le mse_alpha vaut: {mse_alpha}")
+            print(f"Le mse_psi vaut: {mse_psi}")
 
         return (mse_prix, mse_alpha, mse_psi)
 

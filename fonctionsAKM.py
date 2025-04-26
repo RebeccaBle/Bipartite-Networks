@@ -23,6 +23,7 @@ class graph_AKM:
         self.constente =None
         self.matrice_distance = None
         self.lien = None
+        self.std_bruit = None
     
     def create_link(self, effet_pat=None, effet_doc=None, beta_lien=None, show=True):
 
@@ -79,7 +80,7 @@ class graph_AKM:
         plt.legend()
         plt.show()
 
-    def solve_model(self, alpha=None, psi=None, constente=None, beta=None):
+    def solve_model(self, alpha=None, psi=None, constente=None, beta=None, std_bruit= 1):
 
         if alpha is not None:
             self.alpha = alpha
@@ -89,13 +90,15 @@ class graph_AKM:
             self.beta = beta
         if constente is not None:
             self.constente = constente
+        if std_bruit is not None:
+            self.std_bruit = std_bruit
 
         #1 Create prices
 
         self.prix = np.zeros((self.nombre_patient,self.nombre_docteur))
         for j in range(self.nombre_docteur):
             for i in range(self.nombre_patient):
-                self.prix[i,j] = self.constente + self.alpha[i] + self.psi[j] + self.beta*self.matrice_distance[i,j] +np.random.normal()
+                self.prix[i,j] = self.constente + self.alpha[i] + self.psi[j] + self.beta*self.matrice_distance[i,j] +np.random.normal(0,self.std_bruit)
 
         #2 Create all matrixes
 
@@ -155,15 +158,21 @@ class graph_AKM:
         
         return(beta_chapeau, alpha_chapeau, psi_chapeau, prix_chapeau)
     
-    def show_perf(self, alpha, psi, constente, beta, show=True):
-        beta_chapeau, alpha_chapeau, psi_chapeau, prix_chapeau = self.solve_model(alpha, psi, constente, beta)
+    def show_perf(self, alpha, psi, constente, beta, std_bruit= None, show=True):
+
+        if std_bruit is not None:
+            self.std_bruit = std_bruit
+        else:
+            self.std_bruit = 1
+
+        beta_chapeau, alpha_chapeau, psi_chapeau, prix_chapeau = self.solve_model(alpha, psi, constente, beta, self.std_bruit)
 
         mse_prix = int(((self.prix-prix_chapeau)**2).sum())/(self.nombre_patient*self.nombre_docteur)
         mse_alpha = ((self.alpha-alpha_chapeau[:])**2).sum()/(self.nombre_patient)
         mse_psi = ((self.psi-psi_chapeau[:])**2).sum()/(self.nombre_docteur)
 
         if show:
-            print(f"Le mse_prix vaut: {mse_prix}")
+            print(f"Le mse_prix vaut: {mse_prix}, il doit normalement valoir la variance du bruit = {self.std_bruit**2}")
             print(f"Le mse_alpha vaut: {mse_alpha}")
             print(f"Le mse_psi vaut: {mse_psi}")
 
@@ -177,7 +186,7 @@ class graph_AKM:
         s=[]
         for i in tqdm(t):
             self.create_link(self.effet_pat, self.effet_doc, i, show=False)
-            perfs=self.show_perf(self.alpha, self.psi, self.constente, self.beta, show=False)
+            perfs=self.show_perf(self.alpha, self.psi, self.constente, self.beta, self.std_bruit, show=False)
             x.append(perfs[0])
             y.append(perfs[1])
             z.append(perfs[2])
@@ -194,6 +203,7 @@ class graph_AKM:
         plt.plot(s, x, label="mse modèle")
         plt.plot(s, y, label="mse patient")
         plt.plot(s, z, label="mse docteur")
+        plt.axhline(y=self.std_bruit**2, linestyle='--', label='Noise Variance')
 
         # Ajouter des labels et un titre
         plt.xlabel("sparcité")

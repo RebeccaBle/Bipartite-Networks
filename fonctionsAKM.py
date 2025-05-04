@@ -5,6 +5,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import mean_squared_error
 import statsmodels.api as sm
 from tqdm import tqdm
+from sklearn.cluster import KMeans
 
 class graph_AKM:
 
@@ -214,6 +215,159 @@ class graph_AKM:
 
         # Afficher le graphique
         plt.show()
+
+    def coclustering(self, alpha=None, psi=None, constente=None, beta=None, nombre_cluster=None, std_bruit= 1, print_reg=False):
+
+        if alpha is not None:
+            self.alpha = alpha
+        if psi is not None:
+            self.psi = psi
+        if beta is not None:
+            self.beta = beta
+        if constente is not None:
+            self.constente = constente
+        if std_bruit is not None:
+            self.std_bruit = std_bruit
+
+        #Calcul du prix selon le modèle
+
+        self.prix = np.zeros((self.nombre_patient,self.nombre_docteur))
+        for j in range(self.nombre_docteur):
+            for i in range(self.nombre_patient):
+                self.prix[i,j] = self.constente + self.alpha[i] + self.psi[j] + self.beta*self.matrice_distance[i,j] +np.random.normal(0,self.std_bruit)
+
+        prix_observe= self.prix*self.lien
+
+        #clustering 
+
+        Moment_1_i = self.lien.sum(axis=1)
+        Moment_2_i = (prix_observe).sum(axis=1)
+
+        Moment_1_j = self.lien.sum(axis=0)
+        Moment_2_j = (prix_observe).sum(axis=0)
+
+        ecart_type_i = []
+        for i in range(self.nombre_patient):
+            vecteur_i = []
+            for j in range(self.nombre_docteur):
+                if prix_observe[i,j] >0:
+                    vecteur_i.append(prix_observe[i,j])
+            std = np.std(vecteur_i, ddof=1)
+            ecart_type_i.append(std)
+
+        ecart_type_j = []
+        for j in range(self.nombre_docteur):
+            vecteur_j = []
+            for i in range(self.nombre_patient):
+                if prix_observe[i,j] >0:
+                    vecteur_j.append(prix_observe[i,j])
+            std = np.std(vecteur_j, ddof=1)
+            ecart_type_j.append(std)
+
+        Moment_1_i_ecart = Moment_1_i/np.array(ecart_type_i)
+        Moment_2_i_ecart = Moment_2_i/np.array(ecart_type_i)
+        Moment_1_j_ecart = Moment_1_j/np.array(ecart_type_j)
+        Moment_2_j_ecart = Moment_2_j/np.array(ecart_type_j)
+
+        moments_patients = np.array([[Moment_1_i_ecart[i],Moment_2_i_ecart[i]] for i in range(len(Moment_1_i))])
+        kmeans_patients = KMeans(n_clusters=nombre_cluster)
+        labels_patients = kmeans_patients.fit_predict(moments_patients)
+        moments_docteurs = np.array([[Moment_1_j_ecart[j],Moment_2_j_ecart[j]] for j in range(len(Moment_1_j))])
+        kmeans_docteurs = KMeans(n_clusters=nombre_cluster)
+        labels_docteurs = kmeans_docteurs.fit_predict(moments_docteurs)
+
+        #création du data-frame
+
+        patient_ids = np.repeat(np.arange(self.nombre_patient), self.nombre_docteur)
+        doctor_ids = np.tile(np.arange(self.nombre_docteur), self.nombre_patient)
+
+        df = pd.DataFrame({
+            'patient_id': patient_ids,
+            'doctor_id': doctor_ids,
+            'distance': self.matrice_distance.flatten(),
+            'link': self.lien.flatten(),
+            'prix': self.prix.flatten(),
+            'prix_observe': prix_observe.flatten()
+        })
+
+        patient_ids_petit = np.arange(self.nombre_patient)
+        patient_frame = pd.DataFrame({
+            'patient_id': patient_ids_petit,
+            'kmeans_patients': labels_patients
+        })
+
+        df = pd.merge(df, patient_frame, on='patient_id', how='left')
+
+        docteur_ids_petit = np.arange(self.nombre_docteur)
+        docteur_frame = pd.DataFrame({
+            'doctor_id': docteur_ids_petit,
+            'kmeans_doctors': labels_docteurs
+        })
+
+        df = pd.merge(df, docteur_frame, on='doctor_id', how='left')
+
+        df_kmeans_dummies = pd.get_dummies(df['kmeans_patients'], prefix='cluster_patients')
+
+        df = pd.concat([df, df_kmeans_dummies], axis=1)
+
+        df_kmeans_dummies = pd.get_dummies(df['kmeans_doctors'], prefix='cluster_doctors')
+
+        df = pd.concat([df, df_kmeans_dummies], axis=1)
+
+        # Régressions
+        X_bis=pd.concat([df[["distance"]]]+[df[["cluster_patients_"+str(i)]] for i in range(nombre_cluster-1)]+[df[[f"cluster_doctors_"+str(i)]] for i in range(nombre_cluster-1)], axis=1)
+        X_bis = sm.add_constant(X_bis)
+        d = df["link"]
+        X_bis = X_bis.astype(float)
+        d = d.astype(float)
+        logit_model = sm.Logit(d, X_bis)
+        logit_results = logit_model.fit()
+
+        print(f"la valeur de beta lien estimée est :{logit_results.params.iloc[1]}, elle est en réalité de {-self.beta_lien}" )
+
+        df_observed = df[df["link"] == 1]
+        X=pd.concat([df_observed[["distance"]]]+[df_observed[["cluster_patients_"+str(i)]] for i in range(nombre_cluster-1)]+[df_observed[["cluster_doctors_"+str(i)]] for i in range(nombre_cluster-1)], axis=1)
+        X = sm.add_constant(X)
+        y = df_observed["prix"]
+        X = X.astype(float)
+        y = y.astype(float)
+        model = sm.OLS(y, X)              
+        results = model.fit()
+
+        print(f"la valeur de beta estimée est :{results.params.iloc[1]}, elle est en réalité de {self.beta}" )
+
+        
+        if print_reg:
+            print("formation des liens:")
+            print(logit_results.summary())
+            print("formation du prix")
+            print(results.summary())
+
+        #corrélation des résidus
+
+        a=[]
+        b=[]
+        for i in range(nombre_cluster):
+            docids=list(df[df['cluster_doctors_'+str(i)]==True]['doctor_id'])
+            patids=list(df[df['cluster_patients_'+str(i)]==True]['patient_id'])
+            a.append(np.average([self.effet_doc[i] for i in docids]))
+            b.append(np.average([self.effet_pat[i] for i in patids]))
+        labels_docteurs_average=[a[i] for i in labels_docteurs]
+        labels_patients_average=[b[i] for i in labels_patients]
+        print("corrélation des effets fixes des docteurs avec la moyenne du groupe estimé", np.corrcoef(self.effet_doc, labels_docteurs_average)[0, 1])
+        print("corrélation des effets fixes des patients avec la moyenne du groupe estimé",np.corrcoef(self.effet_pat, labels_patients_average)[0, 1])
+
+        return(logit_results, results)
+
+
+
+
+
+
+
+
+
+
 
 
 

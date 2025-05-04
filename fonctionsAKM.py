@@ -6,6 +6,7 @@ from sklearn.metrics import mean_squared_error
 import statsmodels.api as sm
 from tqdm import tqdm
 from sklearn.cluster import KMeans
+import seaborn as sns
 
 class graph_AKM:
 
@@ -25,7 +26,45 @@ class graph_AKM:
         self.matrice_distance = None
         self.lien = None
         self.std_bruit = None
-    
+
+    def model_recap(self, return_=False):
+        if self.effet_pat is not None and self.effet_doc is not None and self.beta_lien is not None:
+            model_lien = fr""" Les liens sont créés selon le modèle: Dij ~ B (1-1/(1+exp(λij))) 
+                où λ_ij = {self.beta_lien}*Xij + effet_pati + effet_docj
+                avec effet_pat dans [{self.effet_pat.min()};{self.effet_pat.max()}]
+                avec effet_doc dans [{self.effet_doc.min()};{self.effet_doc.max()}]
+                """
+        else:
+            model_lien=None
+        if self.alpha is not None and self.psi is not None and self.std_bruit is not None and self.constente is not None and self.beta is not None:
+            model_prix = fr""" Les prix sont créés selon le modèle: Yij = {self.constente} + {self.beta}*Xij + αi + ψj + εij
+                où εij ~ N(0,{self.std_bruit**2})
+                avec α dans [{self.alpha.min()};{self.alpha.max()}]
+                avec ψ dans [{self.psi.min()};{self.psi.max()}]
+                """
+        else:
+            model_prix=None
+        print(model_lien)
+        print(model_prix)
+        if return_:
+             return(model_lien, model_prix)    
+
+    def show_links(self):
+        plt.figure(figsize=(6, 6))
+        plt.scatter(self.position_docteur[0], self.position_docteur[1], color='blue', alpha=0.7, label="Docteur")
+        plt.scatter(self.position_patient[0], self.position_patient[1], color='red', alpha=0.7, label="Patient")
+        for i in range(self.nombre_patient):
+            for j in range(self.nombre_docteur):
+                if self.lien[i,j] == 1:
+                    plt.plot([self.position_docteur[0][j], self.position_patient[0][i]], [self.position_docteur[1][j], self.position_patient[1][i]], 'k-',alpha=0.5,color="green")
+        plt.title("Points aléatoires uniformes dans [0,1]²")
+        plt.xlabel("x")
+        plt.ylabel("y")
+        plt.grid(True)
+        plt.axis('square')
+        plt.legend()
+        plt.show()    
+
     def create_link(self, effet_pat=None, effet_doc=None, beta_lien=None, show=True):
 
         #1 matrice distance
@@ -45,7 +84,7 @@ class graph_AKM:
         self.lien = np.zeros((self.nombre_patient, self.nombre_docteur))
         for j in range(self.nombre_docteur):
             for i in range(self.nombre_patient):
-                lambda_ij = -self.beta_lien*self.matrice_distance[i,j]-self.effet_pat[i]+self.effet_doc[j]
+                lambda_ij = self.beta_lien*self.matrice_distance[i,j]+self.effet_pat[i]+self.effet_doc[j]
                 self.lien[i,j] = np.random.binomial(1,1-(1/(1+np.exp(lambda_ij))))
 
         #3 graph
@@ -64,22 +103,6 @@ class graph_AKM:
             plt.axis('square')
             plt.legend()
             plt.show()
-    
-    def show_links(self):
-        plt.figure(figsize=(6, 6))
-        plt.scatter(self.position_docteur[0], self.position_docteur[1], color='blue', alpha=0.7, label="Docteur")
-        plt.scatter(self.position_patient[0], self.position_patient[1], color='red', alpha=0.7, label="Patient")
-        for i in range(self.nombre_patient):
-            for j in range(self.nombre_docteur):
-                if self.lien[i,j] == 1:
-                    plt.plot([self.position_docteur[0][j], self.position_patient[0][i]], [self.position_docteur[1][j], self.position_patient[1][i]], 'k-',alpha=0.5,color="green")
-        plt.title("Points aléatoires uniformes dans [0,1]²")
-        plt.xlabel("x")
-        plt.ylabel("y")
-        plt.grid(True)
-        plt.axis('square')
-        plt.legend()
-        plt.show()
 
     def solve_model(self, alpha=None, psi=None, constente=None, beta=None, std_bruit= 1):
 
@@ -159,12 +182,18 @@ class graph_AKM:
         
         return(beta_chapeau, alpha_chapeau, psi_chapeau, prix_chapeau)
     
-    def show_perf(self, alpha, psi, constente, beta, std_bruit= None, show=True):
-
+    def show_perf(self, alpha=None, psi=None, constente=None, beta=None, std_bruit= 1, show=True):
+        
+        if alpha is not None:
+            self.alpha = alpha
+        if psi is not None:
+            self.psi = psi
+        if beta is not None:
+            self.beta = beta
+        if constente is not None:
+            self.constente = constente
         if std_bruit is not None:
             self.std_bruit = std_bruit
-        else:
-            self.std_bruit = 1
 
         beta_chapeau, alpha_chapeau, psi_chapeau, prix_chapeau = self.solve_model(alpha, psi, constente, beta, self.std_bruit)
 
@@ -173,7 +202,7 @@ class graph_AKM:
         mse_psi = ((self.psi-psi_chapeau[:])**2).sum()/(self.nombre_docteur)
 
         if show:
-            print(f"Le mse_prix vaut: {mse_prix}, il doit normalement valoir la variance du bruit = {self.std_bruit**2}")
+            print(f"Le mse_prix vaut: {mse_prix}, il doit normalement valoir la variance du bruit = {self.std_bruit}")
             print(f"Le mse_alpha vaut: {mse_alpha}")
             print(f"Le mse_psi vaut: {mse_psi}")
 
@@ -204,7 +233,7 @@ class graph_AKM:
         plt.plot(s, x, label="mse modèle")
         plt.plot(s, y, label="mse patient")
         plt.plot(s, z, label="mse docteur")
-        plt.axhline(y=self.std_bruit**2, linestyle='--', label='Noise Variance')
+        plt.axhline(y=self.std_bruit**2, linestyle='--', label='Variance du bruit')
 
         # Ajouter des labels et un titre
         plt.xlabel("sparcité")
@@ -216,7 +245,7 @@ class graph_AKM:
         # Afficher le graphique
         plt.show()
 
-    def coclustering(self, alpha=None, psi=None, constente=None, beta=None, nombre_cluster=None, std_bruit= 1, print_reg=False):
+    def coclustering(self, alpha=None, psi=None, constente=0, beta=None, std_bruit= 1, nombre_cluster=1, print_reg=False, print_corr=False):
 
         if alpha is not None:
             self.alpha = alpha
@@ -321,9 +350,9 @@ class graph_AKM:
         X_bis = X_bis.astype(float)
         d = d.astype(float)
         logit_model = sm.Logit(d, X_bis)
-        logit_results = logit_model.fit()
+        logit_results = logit_model.fit(disp=False)
 
-        print(f"la valeur de beta lien estimée est :{logit_results.params.iloc[1]}, elle est en réalité de {-self.beta_lien}" )
+        print(f"la valeur de beta lien estimée est :{logit_results.params.iloc[1]}, elle est en réalité de {self.beta_lien}" )
 
         df_observed = df[df["link"] == 1]
         X=pd.concat([df_observed[["distance"]]]+[df_observed[["cluster_patients_"+str(i)]] for i in range(nombre_cluster-1)]+[df_observed[["cluster_doctors_"+str(i)]] for i in range(nombre_cluster-1)], axis=1)
@@ -336,7 +365,6 @@ class graph_AKM:
 
         print(f"la valeur de beta estimée est :{results.params.iloc[1]}, elle est en réalité de {self.beta}" )
 
-        
         if print_reg:
             print("formation des liens:")
             print(logit_results.summary())
@@ -357,7 +385,60 @@ class graph_AKM:
         print("corrélation des effets fixes des docteurs avec la moyenne du groupe estimé", np.corrcoef(self.effet_doc, labels_docteurs_average)[0, 1])
         print("corrélation des effets fixes des patients avec la moyenne du groupe estimé",np.corrcoef(self.effet_pat, labels_patients_average)[0, 1])
 
+        if print_corr:
+
+            dfplot = pd.DataFrame({'vraie_valeur': self.effet_pat, 'moyenne_cluster': labels_patients_average})
+
+            dfplot['count'] = dfplot.groupby(['vraie_valeur', 'moyenne_cluster'])['moyenne_cluster'].transform('count')
+
+
+            plt.figure(figsize=(8, 6))
+            sns.scatterplot(
+                data=dfplot,
+                x='vraie_valeur',
+                y='moyenne_cluster',
+                size='count',        # la taille dépend de la fréquence
+                sizes=(50, 300),     # taille minimale et maximale
+                legend=False,
+                alpha=0.7
+            )
+            plt.plot(self.effet_pat, self.effet_pat, label='y=x', color="red")
+            plt.title("Moyenne d'effet fixe du cluster du patient par rapport à leur vraie valeur")
+            plt.xlabel('vraie_valeur')
+            plt.ylabel('moyenne_cluster')
+            plt.grid(True)
+            plt.tight_layout()
+            plt.legend()
+            plt.show()
+
+            dfplot = pd.DataFrame({'vraie_valeur': self.effet_doc, 'moyenne_cluster': labels_docteurs_average})
+
+            dfplot['count'] = dfplot.groupby(['vraie_valeur', 'moyenne_cluster'])['moyenne_cluster'].transform('count')
+
+            plt.figure(figsize=(8, 6))
+            sns.scatterplot(
+                data=dfplot,
+                x='vraie_valeur',
+                y='moyenne_cluster',
+                size='count',       
+                sizes=(50, 300),   
+                legend=False,
+                alpha=0.7
+            )
+            plt.plot(self.effet_doc, self.effet_doc, label='y=x', color="red")
+            plt.title("Moyenne d'effet fixe du cluster du docteur par rapport à leur vraie valeur")
+            plt.xlabel('vraie_valeur')
+            plt.ylabel('moyenne_cluster')
+            plt.grid(True)
+            plt.legend()
+            plt.tight_layout()
+            plt.show()
+
+
         return(logit_results, results)
+
+
+
 
 
 

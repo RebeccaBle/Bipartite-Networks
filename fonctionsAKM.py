@@ -82,6 +82,7 @@ class graph_AKM:
         if effet_pat is not None:
             self.effet_pat = effet_pat
         self.lien = np.zeros((self.nombre_patient, self.nombre_docteur))
+
         for j in range(self.nombre_docteur):
             for i in range(self.nombre_patient):
                 lambda_ij = self.beta_lien*self.matrice_distance[i,j]+self.effet_pat[i]+self.effet_doc[j]
@@ -258,12 +259,13 @@ class graph_AKM:
         if std_bruit is not None:
             self.std_bruit = std_bruit
 
-        #Calcul du prix selon le modèle
+        if self.prix is None: 
+            #Calcul du prix selon le modèle
 
-        self.prix = np.zeros((self.nombre_patient,self.nombre_docteur))
-        for j in range(self.nombre_docteur):
-            for i in range(self.nombre_patient):
-                self.prix[i,j] = self.constente + self.alpha[i] + self.psi[j] + self.beta*self.matrice_distance[i,j] +np.random.normal(0,self.std_bruit)
+            self.prix = np.zeros((self.nombre_patient,self.nombre_docteur))
+            for j in range(self.nombre_docteur):
+                for i in range(self.nombre_patient):
+                    self.prix[i,j] = self.constente + self.alpha[i] + self.psi[j] + self.beta*self.matrice_distance[i,j] +np.random.normal(0,self.std_bruit)
 
         prix_observe= self.prix*self.lien
 
@@ -275,34 +277,21 @@ class graph_AKM:
         Moment_1_j = self.lien.sum(axis=0)
         Moment_2_j = (prix_observe).sum(axis=0)
 
-        ecart_type_i = []
-        for i in range(self.nombre_patient):
-            vecteur_i = []
-            for j in range(self.nombre_docteur):
-                if prix_observe[i,j] >0:
-                    vecteur_i.append(prix_observe[i,j])
-            std = np.std(vecteur_i, ddof=1)
-            ecart_type_i.append(std)
+        ecart_type_2_i = [np.std(prix_observe[i,:], ddof=1) for i in range(self.nombre_docteur)]
+        ecart_type_1_i = [np.std(self.lien[i,:], ddof=1) for i in range(self.nombre_docteur)]
+        ecart_type_2_j = [np.std(prix_observe[:,j], ddof=1) for j in range(self.nombre_patient)]
+        ecart_type_1_j = [np.std(self.lien[:,j], ddof=1) for j in range(self.nombre_patient)]
 
-        ecart_type_j = []
-        for j in range(self.nombre_docteur):
-            vecteur_j = []
-            for i in range(self.nombre_patient):
-                if prix_observe[i,j] >0:
-                    vecteur_j.append(prix_observe[i,j])
-            std = np.std(vecteur_j, ddof=1)
-            ecart_type_j.append(std)
+        Moment_1_i_ecart = Moment_1_i/np.array(ecart_type_1_i)
+        Moment_2_i_ecart = Moment_2_i/np.array(ecart_type_2_i)
+        Moment_1_j_ecart = Moment_1_j/np.array(ecart_type_1_j)
+        Moment_2_j_ecart = Moment_2_j/np.array(ecart_type_2_j)
 
-        Moment_1_i_ecart = Moment_1_i/np.array(ecart_type_i)
-        Moment_2_i_ecart = Moment_2_i/np.array(ecart_type_i)
-        Moment_1_j_ecart = Moment_1_j/np.array(ecart_type_j)
-        Moment_2_j_ecart = Moment_2_j/np.array(ecart_type_j)
-
-        moments_patients = np.array([[Moment_1_i_ecart[i],Moment_2_i_ecart[i]] for i in range(len(Moment_1_i))])
-        kmeans_patients = KMeans(n_clusters=nombre_cluster)
+        moments_patients = np.array([[Moment_1_i_ecart[i]+Moment_2_i_ecart[i]] for i in range(len(Moment_1_i))])
+        kmeans_patients = KMeans(n_clusters=nombre_cluster, random_state=42)
         labels_patients = kmeans_patients.fit_predict(moments_patients)
-        moments_docteurs = np.array([[Moment_1_j_ecart[j],Moment_2_j_ecart[j]] for j in range(len(Moment_1_j))])
-        kmeans_docteurs = KMeans(n_clusters=nombre_cluster)
+        moments_docteurs = np.array([[Moment_1_j_ecart[j] + Moment_2_j_ecart[j]] for j in range(len(Moment_1_j))])
+        kmeans_docteurs = KMeans(n_clusters=nombre_cluster, random_state=42)
         labels_docteurs = kmeans_docteurs.fit_predict(moments_docteurs)
 
         #création du data-frame
@@ -371,23 +360,32 @@ class graph_AKM:
             print("formation du prix")
             print(results.summary())
 
-        #corrélation des résidus
-
-        a=[]
-        b=[]
-        for i in range(nombre_cluster):
-            docids=list(df[df['cluster_doctors_'+str(i)]==True]['doctor_id'])
-            patids=list(df[df['cluster_patients_'+str(i)]==True]['patient_id'])
-            a.append(np.average([self.effet_doc[i] for i in docids]))
-            b.append(np.average([self.effet_pat[i] for i in patids]))
-        labels_docteurs_average=[a[i] for i in labels_docteurs]
-        labels_patients_average=[b[i] for i in labels_patients]
-        print("corrélation des effets fixes des docteurs avec la moyenne du groupe estimé", np.corrcoef(self.effet_doc, labels_docteurs_average)[0, 1])
-        print("corrélation des effets fixes des patients avec la moyenne du groupe estimé",np.corrcoef(self.effet_pat, labels_patients_average)[0, 1])
-
         if print_corr:
 
-            dfplot = pd.DataFrame({'vraie_valeur': self.effet_pat, 'moyenne_cluster': labels_patients_average})
+            coef_clusters_j = [results.params.iloc[1+nombre_cluster+i] for i in range(nombre_cluster-1)]+[0]
+            valeurs_clusters_j= [coef_clusters_j[i] for i in labels_docteurs]
+            print("Corélation des effets fixes des docteurs avec ceux estimés par la régression sur les clusters", np.corrcoef(valeurs_clusters_j, self.effet_doc)[0,1])
+
+            coef_clusters_i = [results.params.iloc[2+i] for i in range(nombre_cluster-1)]+[0]
+            valeurs_clusters_i= [coef_clusters_i[i] for i in labels_patients]
+            print("Corélation des effets fixes des patients avec ceux estimés par la régression sur les clusters", np.corrcoef(valeurs_clusters_i, self.effet_pat)[0,1])
+            
+            a=[]
+            b=[]
+            for i in range(nombre_cluster):
+                docids=list(df[df['cluster_doctors_'+str(i)]==True]['doctor_id'])
+                patids=list(df[df['cluster_patients_'+str(i)]==True]['patient_id'])
+                a.append(np.average([self.effet_doc[i] for i in docids]))
+                b.append(np.average([self.effet_pat[i] for i in patids]))
+            labels_docteurs_average=[a[i] for i in labels_docteurs]
+            labels_patients_average=[b[i] for i in labels_patients]
+            print("Corrélation des effets fixes des docteurs avec la moyenne du groupe estimé", np.corrcoef(self.effet_doc, labels_docteurs_average)[0, 1])
+            print("Corrélation des effets fixes des patients avec la moyenne du groupe estimé",np.corrcoef(self.effet_pat, labels_patients_average)[0, 1])
+
+
+            #1
+            
+            dfplot = pd.DataFrame({'vraie_valeur': self.psi, 'moyenne_cluster': valeurs_clusters_j})
 
             dfplot['count'] = dfplot.groupby(['vraie_valeur', 'moyenne_cluster'])['moyenne_cluster'].transform('count')
 
@@ -402,14 +400,39 @@ class graph_AKM:
                 legend=False,
                 alpha=0.7
             )
-            plt.plot(self.effet_pat, self.effet_pat, label='y=x', color="red")
-            plt.title("Moyenne d'effet fixe du cluster du patient par rapport à leur vraie valeur")
-            plt.xlabel('vraie_valeur')
-            plt.ylabel('moyenne_cluster')
+            plt.title("Valeur estimée du cluster affecté en fonction de la vraie valeur du docteur")
+            plt.xlabel('Vraie effet fixe du docteur')
+            plt.ylabel('Valeur estimée du cluster affecté')
             plt.grid(True)
             plt.tight_layout()
             plt.legend()
             plt.show()
+
+            #2
+            dfplot = pd.DataFrame({'vraie_valeur': self.alpha, 'moyenne_cluster': valeurs_clusters_i})
+
+            dfplot['count'] = dfplot.groupby(['vraie_valeur', 'moyenne_cluster'])['moyenne_cluster'].transform('count')
+
+
+            plt.figure(figsize=(8, 6))
+            sns.scatterplot(
+                data=dfplot,
+                x='vraie_valeur',
+                y='moyenne_cluster',
+                size='count',        # la taille dépend de la fréquence
+                sizes=(50, 300),     # taille minimale et maximale
+                legend=False,
+                alpha=0.7
+            )
+            plt.title("Valeur estimée du cluster affecté en fonction de la vraie valeur du patient")
+            plt.xlabel('Vraie effet fixe du patient')
+            plt.ylabel('Valeur estimée du cluster affecté')
+            plt.grid(True)
+            plt.tight_layout()
+            plt.legend()
+            plt.show()
+
+            #3
 
             dfplot = pd.DataFrame({'vraie_valeur': self.effet_doc, 'moyenne_cluster': labels_docteurs_average})
 
@@ -434,13 +457,32 @@ class graph_AKM:
             plt.tight_layout()
             plt.show()
 
+            #4
+            dfplot = pd.DataFrame({'vraie_valeur': self.effet_pat, 'moyenne_cluster': labels_patients_average})
 
-        return(logit_results, results)
+            dfplot['count'] = dfplot.groupby(['vraie_valeur', 'moyenne_cluster'])['moyenne_cluster'].transform('count')
 
 
+            plt.figure(figsize=(8, 6))
+            sns.scatterplot(
+                data=dfplot,
+                x='vraie_valeur',
+                y='moyenne_cluster',
+                size='count',        # la taille dépend de la fréquence
+                sizes=(50, 300),     # taille minimale et maximale
+                legend=False,
+                alpha=0.7
+            )
+            plt.plot(self.effet_pat, self.effet_pat, label='y=x', color="red")
+            plt.title("Moyenne d'effet fixe du cluster du patient par rapport à leur vraie valeur")
+            plt.xlabel('vraie_valeur')
+            plt.ylabel('moyenne_cluster')
+            plt.grid(True)
+            plt.tight_layout()
+            plt.legend()
+            plt.show()
 
-
-
+        return(logit_results, results, labels_patients, labels_docteurs)
 
 
 

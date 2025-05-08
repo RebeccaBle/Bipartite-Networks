@@ -282,10 +282,10 @@ class graph_AKM:
         ecart_type_2_j = [np.std(prix_observe[:,j], ddof=1) for j in range(self.nombre_patient)]
         ecart_type_1_j = [np.std(self.lien[:,j], ddof=1) for j in range(self.nombre_patient)]
 
-        Moment_1_i_ecart = Moment_1_i/np.array(ecart_type_1_i)
-        Moment_2_i_ecart = Moment_2_i/np.array(ecart_type_2_i)
-        Moment_1_j_ecart = Moment_1_j/np.array(ecart_type_1_j)
-        Moment_2_j_ecart = Moment_2_j/np.array(ecart_type_2_j)
+        Moment_1_i_ecart = Moment_1_i*np.array(ecart_type_1_i)
+        Moment_2_i_ecart = Moment_2_i*np.array(ecart_type_2_i)
+        Moment_1_j_ecart = Moment_1_j*np.array(ecart_type_1_j)
+        Moment_2_j_ecart = Moment_2_j*np.array(ecart_type_2_j)
 
         moments_patients = np.array([[Moment_1_i_ecart[i]+Moment_2_i_ecart[i]] for i in range(len(Moment_1_i))])
         kmeans_patients = KMeans(n_clusters=nombre_cluster, random_state=42)

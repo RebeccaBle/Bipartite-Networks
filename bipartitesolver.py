@@ -8,7 +8,7 @@ from tqdm import tqdm
 from sklearn.cluster import KMeans
 import seaborn as sns
 
-class graph_AKM:
+class solver:
 
     def __init__(self, nombre_patient = 1, nombre_docteur = 1):
         self.nombre_patient = nombre_patient
@@ -105,7 +105,7 @@ class graph_AKM:
             plt.legend()
             plt.show()
 
-    def solve_model(self, alpha=None, psi=None, constente=None, beta=None, std_bruit= 1):
+    def akm_solver(self, alpha=None, psi=None, constente=None, beta=None, std_bruit= 1):
 
         if alpha is not None:
             self.alpha = alpha
@@ -183,7 +183,7 @@ class graph_AKM:
         
         return(beta_chapeau, alpha_chapeau, psi_chapeau, prix_chapeau)
     
-    def show_perf(self, alpha=None, psi=None, constente=None, beta=None, std_bruit= 1, show=True):
+    def akm_show_perf(self, alpha=None, psi=None, constente=None, beta=None, std_bruit= 1, show=True):
         
         if alpha is not None:
             self.alpha = alpha
@@ -196,7 +196,7 @@ class graph_AKM:
         if std_bruit is not None:
             self.std_bruit = std_bruit
 
-        beta_chapeau, alpha_chapeau, psi_chapeau, prix_chapeau = self.solve_model(alpha, psi, constente, beta, self.std_bruit)
+        beta_chapeau, alpha_chapeau, psi_chapeau, prix_chapeau = self.akm_solver(alpha, psi, constente, beta, self.std_bruit)
 
         mse_prix = int(((self.prix-prix_chapeau)**2).sum())/(self.nombre_patient*self.nombre_docteur)
         mse_alpha = ((self.alpha-alpha_chapeau[:])**2).sum()/(self.nombre_patient)
@@ -209,7 +209,7 @@ class graph_AKM:
 
         return (mse_prix, mse_alpha, mse_psi)
 
-    def sparcity(self, beta_lien_min, beta_lien_max, nb_points):
+    def akm_sparcity_effect(self, beta_lien_min, beta_lien_max, nb_points):
         t=np.linspace(beta_lien_min,beta_lien_max, nb_points)
         x=[]
         y=[]
@@ -217,7 +217,7 @@ class graph_AKM:
         s=[]
         for i in tqdm(t):
             self.create_link(self.effet_pat, self.effet_doc, i, show=False)
-            perfs=self.show_perf(self.alpha, self.psi, self.constente, self.beta, self.std_bruit, show=False)
+            perfs=self.akm_show_perf(self.alpha, self.psi, self.constente, self.beta, self.std_bruit, show=False)
             x.append(perfs[0])
             y.append(perfs[1])
             z.append(perfs[2])
@@ -246,7 +246,7 @@ class graph_AKM:
         # Afficher le graphique
         plt.show()
 
-    def coclustering(self, alpha=None, psi=None, constente=0, beta=None, std_bruit= 1, nombre_cluster=1, print_reg=False, print_corr=False):
+    def coclustering_solver(self, alpha=None, psi=None, constente=0, beta=None, std_bruit= 1, nombre_cluster=1, print_reg=False, print_corr=False):
 
         if alpha is not None:
             self.alpha = alpha
@@ -483,16 +483,3 @@ class graph_AKM:
             plt.show()
 
         return(logit_results, results, labels_patients, labels_docteurs)
-
-
-
-
-
-
-
-
-
-
-
-
-
